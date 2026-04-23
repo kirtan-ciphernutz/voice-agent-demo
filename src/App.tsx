@@ -68,6 +68,8 @@ export default function App() {
             return (
               <ElevenLabsWidget
                 agentId={AGENT_ID}
+                actionText="Speak with Deevyashakti Realty"
+                startCallText="Let's discuss your perfect apartment"
                 dynamicVariables={
                   previousSummary ? { previous_conversation_summary: previousSummary } : undefined
                 }

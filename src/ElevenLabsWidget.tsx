@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import '@elevenlabs/convai-widget-embed';
+import avatarImage from './assets/download.jpeg';
 
 // TypeScript declaration for the custom element
 declare global {
@@ -31,6 +32,12 @@ type WidgetProps = {
   dynamicVariables?: Record<string, string>;
   avatarOrbColor1?: string;
   avatarOrbColor2?: string;
+  avatarImageUrl?: string;
+  actionText?: string;
+  startCallText?: string;
+  endCallText?: string;
+  listeningText?: string;
+  speakingText?: string;
 };
 
 export function ElevenLabsWidget({
@@ -38,6 +45,12 @@ export function ElevenLabsWidget({
   dynamicVariables,
   avatarOrbColor1 = '#4D9CFF',
   avatarOrbColor2 = '#9CE6E6',
+  avatarImageUrl = avatarImage,
+  actionText,
+  startCallText,
+  endCallText,
+  listeningText,
+  speakingText,
 }: WidgetProps) {
   const widgetRef = useRef<HTMLElement>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -46,6 +59,18 @@ export function ElevenLabsWidget({
   useEffect(() => {
     const widget = widgetRef.current;
     if (!widget) return;
+
+    // Imperatively set attributes — React doesn't reliably pass
+    // kebab-case attributes to custom HTML elements
+    if (actionText) widget.setAttribute('action-text', actionText);
+    if (startCallText) widget.setAttribute('start-call-text', startCallText);
+    if (endCallText) widget.setAttribute('end-call-text', endCallText);
+    if (listeningText) widget.setAttribute('listening-text', listeningText);
+    if (speakingText) widget.setAttribute('speaking-text', speakingText);
+    if (avatarImageUrl) widget.setAttribute('avatar-image-url', avatarImageUrl);
+    if (avatarOrbColor1) widget.setAttribute('avatar-orb-color-1', avatarOrbColor1);
+    if (avatarOrbColor2) widget.setAttribute('avatar-orb-color-2', avatarOrbColor2);
+    if (dynamicVariables) widget.setAttribute('dynamic-variables', JSON.stringify(dynamicVariables));
 
     // Listen for call start/end to show/hide mute button
     const handleCallStart = () => setIsCallActive(true);
@@ -57,11 +82,54 @@ export function ElevenLabsWidget({
     widget.addEventListener('elevenlabs-convai:call', handleCallStart);
     widget.addEventListener('elevenlabs-convai:call_ended', handleCallEnd);
 
+    // Periodically check and modify internal widget DOM
+    const widgetDomMonitor = setInterval(() => {
+      const roots = [document, widget, widget.shadowRoot].filter(Boolean) as ParentNode[];
+      
+      roots.forEach(root => {
+        // Remove the "Powered by ElevenAgents" badge
+        const paragraphs = root.querySelectorAll('p');
+        paragraphs.forEach(p => {
+          if (p.textContent?.includes('Powered by') && p.textContent?.includes('ElevenAgents')) {
+            p.remove();
+          }
+        });
+
+        // Auto-click the Terms and Conditions 'Accept' button to bypass the popup
+        const buttons = root.querySelectorAll('button');
+        buttons.forEach(btn => {
+          if (btn.textContent === 'Accept' || btn.textContent?.includes('Accept')) {
+            btn.click();
+          }
+        });
+
+        // Replace default widget text labels by targeting bare text nodes only.
+        // Using TreeWalker avoids accidentally matching parent divs that contain
+        // child elements like the avatar image, which would be wiped by textContent=
+        const replaceTextNode = (root: ParentNode, from: string, to: string) => {
+          const walker = document.createTreeWalker(
+            root as Node,
+            NodeFilter.SHOW_TEXT,
+            { acceptNode: (node) => node.textContent?.trim() === from ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT }
+          );
+          const matches: Text[] = [];
+          let node: Node | null;
+          while ((node = walker.nextNode())) matches.push(node as Text);
+          matches.forEach(n => { n.textContent = to; });
+        };
+
+        if (actionText) replaceTextNode(root as ParentNode, 'Need help?', actionText);
+        if (startCallText) replaceTextNode(root as ParentNode, 'Start a call', startCallText);
+        if (endCallText) replaceTextNode(root as ParentNode, 'End call', endCallText);
+      });
+    }, 50);
+
     return () => {
       widget.removeEventListener('elevenlabs-convai:call', handleCallStart);
       widget.removeEventListener('elevenlabs-convai:call_ended', handleCallEnd);
+      clearInterval(widgetDomMonitor);
     };
-  }, []);
+  }, [actionText, startCallText, endCallText, listeningText, speakingText, avatarImageUrl, avatarOrbColor1, avatarOrbColor2, dynamicVariables]);
 
   const handleMuteToggle = () => {
     const widget = widgetRef.current as any;
@@ -87,6 +155,12 @@ export function ElevenLabsWidget({
         variant="full"
         avatar-orb-color-1={avatarOrbColor1}
         avatar-orb-color-2={avatarOrbColor2}
+        avatar-image-url={avatarImageUrl}
+        action-text={actionText}
+        start-call-text={startCallText}
+        end-call-text={endCallText}
+        listening-text={listeningText}
+        speaking-text={speakingText}
         dynamic-variables={
           dynamicVariables ? JSON.stringify(dynamicVariables) : undefined
         }
