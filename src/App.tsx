@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ElevenLabsWidget } from './ElevenLabsWidget'
 import './index.css'
 
@@ -9,8 +9,9 @@ const USERS = [
 ]
 
 // The Agent ID placeholder
-const AGENT_ID = 'agent_6901kpsp4xxnfrca64s2rxh3h64k'
+const AGENT_ID = 'agent_5801kpwtsdwze1q948xh55w47paa'
 
+const HISTORY_URL = '/api/n8n/webhook/get-history/'
 
 export default function App() {
   const [username, setUsername] = useState('')
@@ -18,6 +19,34 @@ export default function App() {
   const [error, setError] = useState('')
   const [loggedIn, setLoggedIn] = useState(false)
   const [loggedInUser, setLoggedInUser] = useState('')
+  const [previousSummary, setPreviousSummary] = useState('')
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  // Fetch conversation history when user logs in
+  useEffect(() => {
+    if (!loggedIn || !loggedInUser) return
+
+    const fetchHistory = async () => {
+      setLoadingHistory(true)
+      try {
+        const res = await fetch(HISTORY_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: loggedInUser }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setPreviousSummary(data.summary || '')
+        }
+      } catch (err) {
+        console.error('Failed to fetch conversation history:', err)
+      } finally {
+        setLoadingHistory(false)
+      }
+    }
+
+    fetchHistory()
+  }, [loggedIn, loggedInUser])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,22 +89,20 @@ export default function App() {
             Sign out
           </button>
 
-          {(() => {
-            const previousSummary = loggedInUser === 'testuser'
-              ? "The conversation began with the agent offering assistance, to which the user responded with a greeting. The agent then reiterated its offer to help.The user sought a 3 BHK flat for rent in Ahmedabad's Satellite area, with a budget of 40,000 INR/month."
-              : "";
-              
-            return (
-              <ElevenLabsWidget
-                agentId={AGENT_ID}
-                actionText="Chat with Realty"
-                startCallText="Find your home"
-                dynamicVariables={
-                  previousSummary ? { previous_conversation_summary: previousSummary } : undefined
-                }
-              />
-            );
-          })()}
+          {loadingHistory ? (
+            <p className="text-sm text-gray-400 animate-pulse">Loading conversation history…</p>
+          ) : (
+            <ElevenLabsWidget
+              agentId={AGENT_ID}
+              actionText="Chat with Realty"
+              startCallText="Find your home"
+              dynamicVariables={
+                previousSummary
+                  ? { previous_conversation_summary: previousSummary, user_id: loggedInUser }
+                  : { user_id: loggedInUser }
+              }
+            />
+          )}
         </div>
       </div>
     )

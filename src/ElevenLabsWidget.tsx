@@ -103,6 +103,28 @@ export function ElevenLabsWidget({
           }
         });
 
+        // Dismiss the "How was this conversation?" feedback screen.
+        // Look for any close/skip/dismiss button or the containing section and remove it.
+        root.querySelectorAll('button').forEach(btn => {
+          const label = btn.getAttribute('aria-label') || btn.textContent || '';
+          if (
+            label.includes('Close') ||
+            label.includes('close') ||
+            label.includes('Skip') ||
+            label.includes('skip') ||
+            label.includes('Dismiss') ||
+            label.includes('dismiss')
+          ) {
+            btn.click();
+          }
+        });
+        // Also remove the feedback container if it exists in the DOM
+        root.querySelectorAll('*').forEach(el => {
+          if (el.textContent?.includes('How was this conversation')) {
+            (el as HTMLElement).style.display = 'none';
+          }
+        });
+
         // Replace default widget text labels by targeting bare text nodes only.
         // Using TreeWalker avoids accidentally matching parent divs that contain
         // child elements like the avatar image, which would be wiped by textContent=
