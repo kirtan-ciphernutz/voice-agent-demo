@@ -11,7 +11,7 @@ const USERS = [
 // The Agent ID placeholder
 const AGENT_ID = 'agent_5401kpzqvrehfnm9vqnwzv4qc0ks'
 
-const HISTORY_URL = '/api/n8n/webhook/get-history/'
+const HISTORY_URL = '/api/n8n/webhook/v2/get-history/'
 const AUTH_STORAGE_KEY = 'voice-agent-auth-user'
 
 export default function App() {
