@@ -16,7 +16,7 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/n8n/, ''),
         configure: (proxy, _options) => {
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
+          proxy.on('proxyReq', (proxyReq, _req, _res) => {
             proxyReq.setHeader('Origin', 'https://n8n.ciphernutz.com');
           });
         },
