@@ -21,6 +21,7 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [loggedInUser, setLoggedInUser] = useState('')
   const [previousSummary, setPreviousSummary] = useState('')
+  const [userData, setUserData] = useState<Record<string, string>>({})
   const [loadingHistory, setLoadingHistory] = useState(false)
 
   useEffect(() => {
@@ -51,7 +52,16 @@ export default function App() {
         })
         if (res.ok) {
           const data = await res.json()
-          setPreviousSummary(data.summary || '')
+          setPreviousSummary(data.summary && data.summary !== 'null' ? data.summary : '')
+          
+          const extractedData: Record<string, string> = {}
+          const fields = ['name', 'phone', 'property_type', 'location', 'budget', 'purpose', 'timeline']
+          fields.forEach(f => {
+            if (data[f] && data[f] !== 'null') {
+              extractedData[f] = data[f]
+            }
+          })
+          setUserData(extractedData)
         }
       } catch (err) {
         console.error('Failed to fetch conversation history:', err)
@@ -87,6 +97,7 @@ export default function App() {
     setPassword('')
     setError('')
     setPreviousSummary('')
+    setUserData({})
     localStorage.removeItem(AUTH_STORAGE_KEY)
   }
 
@@ -114,11 +125,11 @@ export default function App() {
               agentId={AGENT_ID}
               actionText="Chat with Realty"
               startCallText="Find your home"
-              dynamicVariables={
-                previousSummary
-                  ? { previous_conversation_summary: previousSummary, user_id: loggedInUser }
-                  : { user_id: loggedInUser }
-              }
+              dynamicVariables={{
+                user_id: loggedInUser,
+                ...(previousSummary ? { previous_conversation_summary: previousSummary } : {}),
+                ...userData
+              }}
             />
           )}
         </div>
