@@ -12,6 +12,7 @@ const USERS = [
 const AGENT_ID = 'agent_5401kpzqvrehfnm9vqnwzv4qc0ks'
 
 const HISTORY_URL = '/api/n8n/webhook/get-history/'
+const AUTH_STORAGE_KEY = 'voice-agent-auth-user'
 
 export default function App() {
   const [username, setUsername] = useState('')
@@ -21,6 +22,20 @@ export default function App() {
   const [loggedInUser, setLoggedInUser] = useState('')
   const [previousSummary, setPreviousSummary] = useState('')
   const [loadingHistory, setLoadingHistory] = useState(false)
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem(AUTH_STORAGE_KEY)
+    if (!storedUser) return
+
+    const isKnownUser = USERS.some((user) => user.username === storedUser)
+    if (!isKnownUser) {
+      localStorage.removeItem(AUTH_STORAGE_KEY)
+      return
+    }
+
+    setLoggedIn(true)
+    setLoggedInUser(storedUser)
+  }, [])
 
   // Fetch conversation history when user logs in
   useEffect(() => {
@@ -59,6 +74,7 @@ export default function App() {
     if (match) {
       setLoggedIn(true)
       setLoggedInUser(username)
+      localStorage.setItem(AUTH_STORAGE_KEY, username)
     } else {
       setError('Invalid username or password.')
     }
@@ -70,6 +86,8 @@ export default function App() {
     setUsername('')
     setPassword('')
     setError('')
+    setPreviousSummary('')
+    localStorage.removeItem(AUTH_STORAGE_KEY)
   }
 
   if (loggedIn) {
@@ -84,9 +102,9 @@ export default function App() {
 
           <button
             onClick={handleLogout}
-            className="text-sm text-indigo-600 hover:text-indigo-800 underline underline-offset-2"
+            className="inline-flex items-center justify-center rounded-lg border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition"
           >
-            Sign out
+            Logout
           </button>
 
           {loadingHistory ? (

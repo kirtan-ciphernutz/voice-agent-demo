@@ -3,13 +3,13 @@ import '@elevenlabs/convai-widget-embed';
 import avatarImage from './assets/download.jpeg';
 
 // TypeScript declaration for the custom element
-declare global {
+declare module 'react' {
   namespace JSX {
     interface IntrinsicElements {
       'elevenlabs-convai': React.DetailedHTMLProps<
         React.HTMLAttributes<HTMLElement> & {
           'agent-id'?: string;
-          'variant'?: 'full' | 'expandable';
+          variant?: 'full' | 'expandable';
           'avatar-orb-color-1'?: string;
           'avatar-orb-color-2'?: string;
           'avatar-image-url'?: string;
@@ -19,7 +19,7 @@ declare global {
           'listening-text'?: string;
           'speaking-text'?: string;
           'dynamic-variables'?: string;
-          'dismissible'?: string;
+          dismissible?: string;
         },
         HTMLElement
       >;
