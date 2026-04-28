@@ -38,6 +38,7 @@ type WidgetProps = {
   endCallText?: string;
   listeningText?: string;
   speakingText?: string;
+  onCallEnded?: () => void;
 };
 
 export function ElevenLabsWidget({
@@ -51,6 +52,7 @@ export function ElevenLabsWidget({
   endCallText,
   listeningText,
   speakingText,
+  onCallEnded,
 }: WidgetProps) {
   const widgetRef = useRef<HTMLElement>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -77,6 +79,7 @@ export function ElevenLabsWidget({
     const handleCallEnd = () => {
       setIsCallActive(false);
       setIsMuted(false);
+      onCallEnded?.();
     };
 
     widget.addEventListener('elevenlabs-convai:call', handleCallStart);
@@ -151,7 +154,7 @@ export function ElevenLabsWidget({
       widget.removeEventListener('elevenlabs-convai:call_ended', handleCallEnd);
       clearInterval(widgetDomMonitor);
     };
-  }, [actionText, startCallText, endCallText, listeningText, speakingText, avatarImageUrl, avatarOrbColor1, avatarOrbColor2, dynamicVariables]);
+  }, [actionText, startCallText, endCallText, listeningText, speakingText, avatarImageUrl, avatarOrbColor1, avatarOrbColor2, dynamicVariables, onCallEnded]);
 
   const handleMuteToggle = () => {
     const widget = widgetRef.current as any;

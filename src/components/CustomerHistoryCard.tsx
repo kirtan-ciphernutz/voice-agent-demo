@@ -1,32 +1,13 @@
-type HistoryData = {
-  id?: string
-  user_id?: string
-  name?: string
-  phone?: string
-  property_type?: string
-  location?: string
-  budget?: string
-  purpose?: string
-  timeline?: string
-  summary?: string
-  created_at?: string
-  updated_at?: string
-}
+type HistoryData = Record<string, string>
 
 type CustomerHistoryCardProps = {
   loading: boolean
   data: HistoryData | null
+  fieldLabels: Array<{ key: string; label: string }>
+  refreshCountdown: number | null
+  isRefreshingAfterCall: boolean
+  isNewlyUpdated: boolean
 }
-
-const FIELD_LABELS: Array<{ key: keyof HistoryData; label: string }> = [
-  { key: 'name', label: 'Name' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'property_type', label: 'Property Type' },
-  { key: 'location', label: 'Location' },
-  { key: 'budget', label: 'Budget' },
-  { key: 'purpose', label: 'Purpose' },
-  { key: 'timeline', label: 'Timeline' },
-]
 
 function getSafeValue(value?: string) {
   if (!value || value === 'null') return 'Not provided'
@@ -42,7 +23,14 @@ function getFormattedDate(value?: string) {
   return parsed.toLocaleString()
 }
 
-export function CustomerHistoryCard({ loading, data }: CustomerHistoryCardProps) {
+export function CustomerHistoryCard({
+  loading,
+  data,
+  fieldLabels,
+  refreshCountdown,
+  isRefreshingAfterCall,
+  isNewlyUpdated,
+}: CustomerHistoryCardProps) {
   if (loading) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -69,12 +57,26 @@ export function CustomerHistoryCard({ loading, data }: CustomerHistoryCardProps)
           </p>
         </div>
         <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
-          ID: {getSafeValue(data.id)}
+          ID: {getSafeValue(data.lead_id || data.id)}
         </span>
       </div>
 
+      {isRefreshingAfterCall && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          {refreshCountdown && refreshCountdown > 0
+            ? `Fetching new data in ${refreshCountdown}s...`
+            : 'Fetching new data...'}
+        </div>
+      )}
+
+      {isNewlyUpdated && !isRefreshingAfterCall && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          New history update detected just now.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {FIELD_LABELS.map((field) => (
+        {fieldLabels.map((field) => (
           <div key={field.key} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{field.label}</p>
             <p className="mt-1 text-sm font-medium text-gray-900">{getSafeValue(data[field.key])}</p>

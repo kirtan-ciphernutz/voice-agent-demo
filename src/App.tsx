@@ -1,48 +1,59 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ElevenLabsWidget } from './ElevenLabsWidget'
 import { CustomerHistoryCard } from './components/CustomerHistoryCard'
+import { AgentGrid } from './components/AgentGrid'
+import { agents, type AgentConfig } from './config/agents'
 import './index.css'
 
-// Hardcoded test users
 const USERS = [
   { username: 'admin', password: 'admin123' },
   { username: 'testuser', password: 'test456' },
 ]
 
-// The Agent ID placeholder
-const AGENT_ID = 'agent_5401kpzqvrehfnm9vqnwzv4qc0ks'
-
-const HISTORY_URL = '/api/n8n/webhook/v2/get-history/'
 const AUTH_STORAGE_KEY = 'voice-agent-auth-user'
 
-type HistoryData = {
-  id?: string
-  user_id?: string
-  name?: string
-  phone?: string
-  property_type?: string
-  location?: string
-  budget?: string
-  purpose?: string
-  timeline?: string
-  summary?: string
-  created_at?: string
-  updated_at?: string
-}
+type HistoryData = Record<string, string>
 
 function normalizeValue(value: unknown) {
   if (value === null || value === undefined) return ''
   return String(value)
 }
 
+function normalizeHistoryPayload(payload: unknown): HistoryData {
+  if (!payload || typeof payload !== 'object') return {}
+  return Object.entries(payload as Record<string, unknown>).reduce<HistoryData>((acc, [key, value]) => {
+    acc[key] = normalizeValue(value)
+    return acc
+  }, {})
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
 export default function App() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loggedIn, setLoggedIn] = useState(false)
+  const [authError, setAuthError] = useState('')
   const [loggedInUser, setLoggedInUser] = useState('')
   const [historyData, setHistoryData] = useState<HistoryData | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [connectingAgentId, setConnectingAgentId] = useState<string | null>(null)
+  const [activeAgent, setActiveAgent] = useState<AgentConfig | null>(null)
+  const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null)
+  const [isRefreshingAfterCall, setIsRefreshingAfterCall] = useState(false)
+  const [isNewlyUpdated, setIsNewlyUpdated] = useState(false)
+
+  const refreshTimeoutRef = useRef<number | null>(null)
+  const refreshIntervalRef = useRef<number | null>(null)
+
+  const isAuthenticated = Boolean(loggedInUser)
+
+  const activeAgentForSession = useMemo(() => {
+    if (activeAgent) return activeAgent
+    if (!loggedInUser) return null
+    return agents.find((agent) => agent.userId === loggedInUser) ?? agents[0]
+  }, [activeAgent, loggedInUser])
 
   useEffect(() => {
     const storedUser = localStorage.getItem(AUTH_STORAGE_KEY)
@@ -54,117 +65,200 @@ export default function App() {
       return
     }
 
-    setLoggedIn(true)
     setLoggedInUser(storedUser)
+    const defaultAgent = agents.find((agent) => agent.userId === storedUser) ?? null
+    setActiveAgent(defaultAgent)
   }, [])
 
-  // Fetch conversation history when user logs in
-  useEffect(() => {
-    if (!loggedIn || !loggedInUser) return
+  const clearRefreshTimers = useCallback(() => {
+    if (refreshTimeoutRef.current) {
+      window.clearTimeout(refreshTimeoutRef.current)
+      refreshTimeoutRef.current = null
+    }
+    if (refreshIntervalRef.current) {
+      window.clearInterval(refreshIntervalRef.current)
+      refreshIntervalRef.current = null
+    }
+  }, [])
 
-    const fetchHistory = async () => {
+  const fetchHistory = useCallback(
+    async (compareAgainstUpdatedAt?: string) => {
+      if (!isAuthenticated || !loggedInUser || !activeAgentForSession) return
+
       setLoadingHistory(true)
       try {
-        const res = await fetch(HISTORY_URL, {
+        const res = await fetch(activeAgentForSession.historyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: loggedInUser }),
         })
         if (res.ok) {
           const data = await res.json()
-          setHistoryData({
-            id: normalizeValue(data.id),
-            user_id: normalizeValue(data.user_id),
-            name: normalizeValue(data.name),
-            phone: normalizeValue(data.phone),
-            property_type: normalizeValue(data.property_type),
-            location: normalizeValue(data.location),
-            budget: normalizeValue(data.budget),
-            purpose: normalizeValue(data.purpose),
-            timeline: normalizeValue(data.timeline),
-            summary: normalizeValue(data.summary),
-            created_at: normalizeValue(data.created_at),
-            updated_at: normalizeValue(data.updated_at),
-          })
+          const nextData = normalizeHistoryPayload(data)
+          setHistoryData(nextData)
+
+          if (compareAgainstUpdatedAt !== undefined) {
+            setIsNewlyUpdated(
+              Boolean(
+                nextData.updated_at &&
+                  compareAgainstUpdatedAt &&
+                  nextData.updated_at !== compareAgainstUpdatedAt
+              )
+            )
+          }
         }
       } catch (err) {
         console.error('Failed to fetch conversation history:', err)
       } finally {
         setLoadingHistory(false)
       }
+    },
+    [isAuthenticated, loggedInUser, activeAgentForSession]
+  )
+
+  useEffect(() => {
+    void fetchHistory()
+  }, [fetchHistory])
+
+  const startVoiceSession = async (agent: AgentConfig) => {
+    setAuthError('')
+    setConnectingAgentId(agent.id)
+    clearRefreshTimers()
+    setRefreshCountdown(null)
+    setIsRefreshingAfterCall(false)
+    setIsNewlyUpdated(false)
+    await sleep(800)
+    setActiveAgent(agent)
+    setConnectingAgentId(null)
+  }
+
+  const loginWithAgentUser = (agent: AgentConfig) => {
+    const accountExists = USERS.some((user) => user.username === agent.userId)
+    if (!accountExists) {
+      setAuthError(`No test account found for ${agent.title}.`)
+      return false
     }
+    setLoggedInUser(agent.userId)
+    localStorage.setItem(AUTH_STORAGE_KEY, agent.userId)
+    return true
+  }
 
-    fetchHistory()
-  }, [loggedIn, loggedInUser])
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-
-    const match = USERS.find(
-      (u) => u.username === username && u.password === password
-    )
-
-    if (match) {
-      setLoggedIn(true)
-      setLoggedInUser(username)
-      localStorage.setItem(AUTH_STORAGE_KEY, username)
-    } else {
-      setError('Invalid username or password.')
+  const handleStartDemo = async (agent: AgentConfig) => {
+    if (!isAuthenticated) {
+      const loggedIn = loginWithAgentUser(agent)
+      if (!loggedIn) return
+    } else if (loggedInUser !== agent.userId) {
+      const loggedIn = loginWithAgentUser(agent)
+      if (!loggedIn) return
     }
+    await startVoiceSession(agent)
   }
 
   const handleLogout = () => {
-    setLoggedIn(false)
+    clearRefreshTimers()
     setLoggedInUser('')
-    setUsername('')
-    setPassword('')
-    setError('')
     setHistoryData(null)
+    setActiveAgent(null)
+    setAuthError('')
+    setConnectingAgentId(null)
+    setRefreshCountdown(null)
+    setIsRefreshingAfterCall(false)
+    setIsNewlyUpdated(false)
     localStorage.removeItem(AUTH_STORAGE_KEY)
   }
 
-  if (loggedIn) {
+  const handleCallEnded = useCallback(() => {
+    clearRefreshTimers()
+    const baseUpdatedAt = historyData?.updated_at ?? ''
+    setIsRefreshingAfterCall(true)
+    setIsNewlyUpdated(false)
+    setRefreshCountdown(15)
+
+    refreshIntervalRef.current = window.setInterval(() => {
+      setRefreshCountdown((current) => {
+        if (current === null) return null
+        if (current <= 1) {
+          if (refreshIntervalRef.current) {
+            window.clearInterval(refreshIntervalRef.current)
+            refreshIntervalRef.current = null
+          }
+          return 0
+        }
+        return current - 1
+      })
+    }, 1000)
+
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      void fetchHistory(baseUpdatedAt).finally(() => {
+        setIsRefreshingAfterCall(false)
+        setRefreshCountdown(null)
+      })
+    }, 15000)
+  }, [clearRefreshTimers, fetchHistory, historyData?.updated_at])
+
+  useEffect(() => {
+    return () => {
+      clearRefreshTimers()
+    }
+  }, [clearRefreshTimers])
+
+  if (isAuthenticated && activeAgentForSession) {
     return (
       <div className="min-h-screen bg-gray-50 px-4 py-8">
         <div className="mx-auto w-full max-w-6xl space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
             <div>
               <h1 className="text-xl font-semibold text-gray-900">
-                Welcome, <span className="text-indigo-600">{loggedInUser}</span>
+                {activeAgentForSession.title} Demo
               </h1>
-              <p className="text-sm text-gray-500">Use the context card and talk to the assistant.</p>
+              <p className="text-sm text-gray-500">
+                Signed in as <span className="font-medium text-gray-700">{loggedInUser}</span>.
+              </p>
             </div>
             <button
               onClick={handleLogout}
-              className="inline-flex items-center justify-center rounded-lg border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition"
+              className="inline-flex items-center justify-center rounded-lg border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50"
             >
               Logout
             </button>
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <CustomerHistoryCard loading={loadingHistory} data={historyData} />
-            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-3">
-              <h2 className="text-lg font-semibold text-gray-900">Voice Assistant</h2>
+            <CustomerHistoryCard
+              loading={loadingHistory}
+              data={historyData}
+              fieldLabels={activeAgentForSession.contextFields}
+              refreshCountdown={refreshCountdown}
+              isRefreshingAfterCall={isRefreshingAfterCall}
+              isNewlyUpdated={isNewlyUpdated}
+            />
+            <section className="space-y-3 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-gray-900">Voice Session</h2>
               <p className="text-sm text-gray-500">
-                The same history is passed as dynamic variables to personalize the call.
+                Real-time voice interaction with dynamic context and conversation history.
               </p>
+              <p className="text-xs text-gray-500">Microphone access required.</p>
               <ElevenLabsWidget
-                agentId={AGENT_ID}
-                actionText="Chat with Realty"
-                startCallText="Find your home"
+                agentId={activeAgentForSession.voiceAgentId}
+                actionText={activeAgentForSession.widgetActionText}
+                startCallText={activeAgentForSession.widgetStartCallText}
+                onCallEnded={handleCallEnded}
                 dynamicVariables={{
                   user_id: loggedInUser,
+                  agent_type: activeAgentForSession.id,
                   previous_conversation_summary:
                     historyData?.summary && historyData.summary !== 'null' ? historyData.summary : '',
                   name: historyData?.name ?? '',
-                  phone: historyData?.phone ?? '',
+                  phone: historyData?.phone || historyData?.phone_number || '',
                   property_type: historyData?.property_type ?? '',
+                  car_type: historyData?.car_type ?? '',
+                  car_model: historyData?.car_model ?? '',
                   location: historyData?.location ?? '',
                   budget: historyData?.budget ?? '',
                   purpose: historyData?.purpose ?? '',
                   timeline: historyData?.timeline ?? '',
+                  preferred_action: historyData?.preferred_action ?? '',
+                  notes: historyData?.notes ?? '',
                 }}
               />
             </section>
@@ -175,17 +269,11 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        {/* Logo / Brand */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600 mb-4">
-            <svg
-              className="w-6 h-6 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+    <div className="min-h-screen bg-gray-50 px-4 py-8 sm:py-12">
+      <div className="mx-auto w-full max-w-6xl space-y-6">
+        <header className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600">
+            <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -194,77 +282,35 @@ export default function App() {
               />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">Sign in</h1>
-          <p className="mt-1 text-sm text-gray-500">Voice Agent Demo</p>
-        </div>
+          <h1 className="text-2xl font-semibold text-gray-900 sm:text-3xl">
+            Test AI Voice Agents in Real Conversations
+          </h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600 sm:text-base">
+            Interact with domain-specific AI agents using real-time voice conversations.
+          </p>
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+            This demo showcases real-time AI voice interactions.
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">
+            <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1">Enterprise ready</span>
+            <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1">Low latency voice</span>
+            <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1">Domain-specific agents</span>
+          </div>
+        </header>
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Username */}
-            <div>
-              <label
-                htmlFor="username"
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-              >
-                Username
-              </label>
-              <input
-                id="username"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                required
-                className="w-full px-3.5 py-2.5 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-              />
-            </div>
+        <AgentGrid
+          agents={agents}
+          onStartDemo={(agent) => {
+            void handleStartDemo(agent)
+          }}
+          connectingAgentId={connectingAgentId}
+        />
 
-            {/* Password */}
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-                className="w-full px-3.5 py-2.5 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-              />
-            </div>
-
-            {/* Error message */}
-            {error && (
-              <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
-
-            {/* Submit */}
-            <button
-              id="login-submit"
-              type="submit"
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Sign in
-            </button>
-          </form>
-        </div>
-
-        {/* Test credentials hint */}
-        <div className="mt-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700 space-y-1">
-          <p className="font-semibold text-amber-800">Test credentials</p>
-          <p><span className="font-medium">admin</span> / admin123</p>
-          <p><span className="font-medium">testuser</span> / test456</p>
-        </div>
+        {authError && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+            {authError}
+          </p>
+        )}
       </div>
     </div>
   )
