@@ -10,6 +10,9 @@ export type AgentConfig = {
   userId: string
   voiceAgentId: string
   historyUrl: string
+  clearContextUrl: string
+  clearContextIdField: 'id' | 'lead_id'
+  defaultContextId: string
   widgetActionText: string
   widgetStartCallText: string
 }
@@ -37,6 +40,9 @@ export const agents: AgentConfig[] = [
     userId: 'admin',
     voiceAgentId: 'agent_5401kpzqvrehfnm9vqnwzv4qc0ks',
     historyUrl: '/api/n8n/webhook/v2/get-history/',
+    clearContextUrl: 'https://n8n.ciphernutz.com/webhook/real-estate-agent/clear-context',
+    clearContextIdField: 'id',
+    defaultContextId: '8',
     widgetActionText: 'Talk to property advisor',
     widgetStartCallText: 'Start property demo',
   },
@@ -65,6 +71,9 @@ export const agents: AgentConfig[] = [
     userId: 'testuser',
     voiceAgentId: 'agent_9401kq79hdt9e61vc8wkhaahbh38',
     historyUrl: 'https://n8n.ciphernutz.com/webhook/car-agent/v2/get-history/',
+    clearContextUrl: 'https://n8n.ciphernutz.com/webhook/car-agent/clear-context',
+    clearContextIdField: 'lead_id',
+    defaultContextId: '1',
     widgetActionText: 'Talk to car advisor',
     widgetStartCallText: 'Start car demo',
   },

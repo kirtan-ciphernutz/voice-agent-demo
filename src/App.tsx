@@ -43,6 +43,8 @@ export default function App() {
   const [refreshCountdown, setRefreshCountdown] = useState<number | null>(null)
   const [isRefreshingAfterCall, setIsRefreshingAfterCall] = useState(false)
   const [isNewlyUpdated, setIsNewlyUpdated] = useState(false)
+  const [isClearingContext, setIsClearingContext] = useState(false)
+  const [clearContextMessage, setClearContextMessage] = useState('')
 
   const refreshTimeoutRef = useRef<number | null>(null)
   const refreshIntervalRef = useRef<number | null>(null)
@@ -164,8 +166,44 @@ export default function App() {
     setRefreshCountdown(null)
     setIsRefreshingAfterCall(false)
     setIsNewlyUpdated(false)
+    setIsClearingContext(false)
+    setClearContextMessage('')
     localStorage.removeItem(AUTH_STORAGE_KEY)
   }
+
+  const handleClearContext = useCallback(async () => {
+    if (!activeAgentForSession || !loggedInUser) return
+
+    setClearContextMessage('')
+    setIsClearingContext(true)
+    try {
+      const contextId =
+        historyData?.[activeAgentForSession.clearContextIdField] || activeAgentForSession.defaultContextId
+
+      const payload = {
+        [activeAgentForSession.clearContextIdField]: contextId,
+        user_id: loggedInUser,
+      }
+
+      const res = await fetch(activeAgentForSession.clearContextUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        throw new Error(`Failed with status ${res.status}`)
+      }
+
+      setClearContextMessage('Context cleared successfully.')
+      await fetchHistory()
+    } catch (err) {
+      console.error('Failed to clear context:', err)
+      setClearContextMessage('Unable to clear context right now. Please try again.')
+    } finally {
+      setIsClearingContext(false)
+    }
+  }, [activeAgentForSession, fetchHistory, historyData, loggedInUser])
 
   const handleCallEnded = useCallback(() => {
     clearRefreshTimers()
@@ -215,13 +253,30 @@ export default function App() {
                 Signed in as <span className="font-medium text-gray-700">{loggedInUser}</span>.
               </p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="inline-flex items-center justify-center rounded-lg border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50"
-            >
-              Logout
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  void handleClearContext()
+                }}
+                disabled={isClearingContext}
+                className="inline-flex items-center justify-center rounded-lg border border-rose-200 px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isClearingContext ? 'Clearing...' : 'Clear Context'}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center justify-center rounded-lg border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50"
+              >
+                Logout
+              </button>
+            </div>
           </div>
+
+          {clearContextMessage && (
+            <p className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+              {clearContextMessage}
+            </p>
+          )}
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <CustomerHistoryCard
